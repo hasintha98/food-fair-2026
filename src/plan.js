@@ -58,7 +58,7 @@ function hhmm(c) {
 
 const rowCells = (row, n) => Array.from({ length: n }, (_, i) => txt(row.getCell(i + 1)));
 
-const deMacron = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+const deMacron = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const same = (a, b) => deMacron(a).toLowerCase().replace(/[^a-z0-9]/g, '') === deMacron(b).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
@@ -139,6 +139,28 @@ function hDotMm(v) {
 }
 
 const UNASSIGNED = /^(driver\s+)?not\s+assigned|^tba$|^tbc$|^unassigned$/i;
+
+/**
+ * Customers type everything into one "Instructions" box. Notes about the food
+ * itself belong to the packers, not the driver, so they are split out at sync.
+ * A note that talks about both (rare) is kept for both.
+ */
+const PACKING_WORDS = /\b(eggs?|soya?|sambol|mild|hot|spicy|chill?i|vegan|vegetarian|halal|gluten|dairy|nuts?|allerg\w*|sauce|gravy|rice|curry|no onion|onions?|less oil|extra)\b/i;
+const DELIVERY_WORDS = /\b(call|ring|text|notify|knock|door|gate|leave|arriv\w*|deliver\w*|drive\w*|house|unit|flat|building|park\w*|contact|number|mobile|pay|paid|cash|behind|near|front|floor|lane|road|street|home|address)\b/i;
+
+function splitInstructions(raw, packingRaw) {
+  const text = clean(raw);
+  let delivery = text;
+  let packing = clean(packingRaw);
+  let moved = false;
+  if (text && PACKING_WORDS.test(text)) {
+    const alsoDelivery = DELIVERY_WORDS.test(text);
+    if (!packing) packing = text;
+    else if (!packing.toLowerCase().includes(text.toLowerCase())) packing = packing + ' · ' + text;
+    if (!alsoDelivery) { delivery = ''; moved = true; }
+  }
+  return { delivery, packing, moved };
+}
 
 // ------------------------------------------------------------------ extract
 function extract(wb) {
@@ -240,22 +262,34 @@ function extract(wb) {
 
   // ---- Stops: the "(Master)" tab is one row per delivery with driver phone and area priority ----
   const stops = [];
+  const movedNotes = [];   // instructions reclassified from delivery to packing
   {
     const ws = sheet('Filter by Area (Master)', { optional: true }) || sheet('Detailed Stops');
-    const width = 16;
+    const width = Math.max(20, ws.getRow(1).cellCount, ws.getRow(3).cellCount);
     const { head, rows } = findHeader(ws, width, (c) => c[0] === 'Route' && c.includes('Order ID'));
     if (head < 0) throw new Error(`Could not find the header row on ${ws.name}`);
     const H = rows.find((r) => r.i === head).c;
-    const col = (name) => H.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+    const col = (name, re) => {
+      const i = H.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+      return i >= 0 || !re ? i : H.findIndex((h) => re.test(h));
+    };
     const ix = {
       route: col('Route'), area: col('Area'), driver: col('Driver'), driverPhone: col('Driver phone'),
       stop: col('Stop'), orderId: col('Order ID'), customer: col('Customer'),
       phone: col('Customer phone') >= 0 ? col('Customer phone') : col('Phone'),
-      address: col('Address'), suburb: col('Suburb'), instructions: col('Instructions'),
+      address: col('Address'), suburb: col('Suburb'),
+      // "Delivery Instructions" on the Master tab, plain "Instructions" on the older views
+      instructions: col('Delivery Instructions', /^(delivery\s+)?instructions?$/i),
       chicken: col('Chicken'), veg: col('Vegetable'), packs: col('Total packs'),
       areaPriority: col('Area by Priority'), leaveBy: col('Leave by'),
+      packing: col('Packing Instructions', /^packing\s+instr/i),   // the sheet spells it "Instrustions"
     };
     const get = (c, k) => (ix[k] >= 0 ? c[ix[k]] : '');
+    const required = ['route', 'stop', 'orderId', 'customer', 'address', 'suburb', 'chicken', 'veg', 'instructions'];
+    const missing = required.filter((k) => ix[k] < 0);
+    if (missing.length) {
+      throw new Error(`${ws.name}: cannot find column(s) ${missing.join(', ')}. Headers present: ${H.filter(Boolean).join(' | ')}`);
+    }
 
     for (const { i, c, row } of rows) {
       if (i <= head) continue;
@@ -268,6 +302,8 @@ function extract(wb) {
       const prio = prioLabel.match(/^\((\d+)\)/)?.[1];
       const driverRaw = get(c, 'driver');
       const driver = r ? r.driver : (UNASSIGNED.test(driverRaw) ? '' : driverRaw);
+      const notes = splitInstructions(get(c, 'instructions'), get(c, 'packing'));
+      if (notes.moved) movedNotes.push({ orderId, text: get(c, 'instructions') });
       stops.push({
         orderId,
         route: routeId,
@@ -285,7 +321,8 @@ function extract(wb) {
         address: get(c, 'address'),
         mapQuery: mapQuery(get(c, 'address'), get(c, 'suburb')),
         suburb: get(c, 'suburb'),
-        instructions: get(c, 'instructions'),
+        instructions: notes.delivery,
+        packingInstructions: notes.packing,
         chicken: num(get(c, 'chicken')),
         veg: num(get(c, 'veg')),
         packs: num(get(c, 'packs')) || num(get(c, 'chicken')) + num(get(c, 'veg')),
@@ -319,7 +356,8 @@ function extract(wb) {
   }
   for (const c of staffing.checks) {
     if (c.action && !/^none$/i.test(c.action) && !/duplicate-address|hibiscus/i.test(c.action) && !/exception/i.test(c.check)) {
-      const dup = attention.some((a) => c.action.includes(a.route || ' '));
+      // skip a check that just restates a route we have already flagged (e.g. "Assign a driver to Route R09")
+      const dup = attention.some((a) => a.route && c.action.includes(a.route));
       if (!dup) attention.push({ kind: 'check', route: '', text: `${c.check}: ${c.action}` });
     }
   }
@@ -378,9 +416,10 @@ function extract(wb) {
     deliveries: stops.length,
     doors: shareCount.size,
     packs: stops.reduce((a, b) => a + b.packs, 0),
+    packingNotes: stops.filter((s) => s.packingInstructions).length,
   };
 
-  return { payload, warnings, totals };
+  return { payload, warnings, totals, movedNotes };
 }
 
 // ------------------------------------------------------------------ outputs
@@ -397,7 +436,8 @@ const CSV_COLS = [
   ['customer', 'Customer'], ['phone', 'Customer phone'],
   ['address', 'Address'], ['suburb', 'Suburb'],
   ['chicken', 'Chicken'], ['veg', 'Veg'], ['packs', 'Packs'],
-  ['instructions', 'Instructions'], ['routeNote', 'Route note'], ['mapQuery', 'Map search'],
+  ['instructions', 'Delivery instructions'], ['packingInstructions', 'Packing instructions'],
+  ['routeNote', 'Route note'], ['mapQuery', 'Map search'],
 ];
 
 function writeCsv(payload) {
@@ -457,6 +497,15 @@ async function writeXlsx(payload) {
     paint(aw, areas, [['priority'], ['name'], ['startTime'], ['packs'], ['cumulativePacks']]);
   }
 
+  const packing = orders.filter((o) => o.packingInstructions);
+  if (packing.length) {
+    const pw = out.addWorksheet('Packing notes', { properties: { tabColor: { argb: 'FFB26A00' } } });
+    dress(pw, [['areaPriority', 'Area #', 8], ['area', 'Area', 22], ['route', 'Route', 8], ['orderId', 'Order ID', 11],
+      ['customer', 'Customer', 26], ['chicken', 'Chicken', 9], ['veg', 'Veg', 7], ['packingInstructions', 'Packing instructions', 48]]);
+    paint(pw, packing.slice().sort((a, b) => a.areaPriority - b.areaPriority || a.seq - b.seq),
+      [['areaPriority'], ['area'], ['route'], ['orderId'], ['customer'], ['chicken'], ['veg'], ['packingInstructions']]);
+  }
+
   const ALL = CSV_COLS.map(([k, l]) => [k, l, Math.min(46, Math.max(9, l.length + 4))]);
   const allWs = out.addWorksheet('All stops', { properties: { tabColor: { argb: 'FF2E7D32' } } });
   dress(allWs, ALL);
@@ -465,7 +514,8 @@ async function writeXlsx(payload) {
   const RUN = [
     ['stopNo', 'Stop', 7], ['orderId', 'Order ID', 11], ['customer', 'Customer', 26],
     ['phone', 'Phone', 15], ['address', 'Address', 48], ['suburb', 'Suburb', 18],
-    ['chicken', 'Chicken', 9], ['veg', 'Veg', 7], ['packs', 'Packs', 8], ['instructions', 'Instructions', 34],
+    ['chicken', 'Chicken', 9], ['veg', 'Veg', 7], ['packs', 'Packs', 8],
+    ['instructions', 'Delivery instructions', 34], ['packingInstructions', 'Packing', 24],
   ];
   for (const r of routes) {
     const ws = out.addWorksheet((r.id + ' ' + (r.driver || 'UNASSIGNED')).replace(/[\\/?*[\]:]/g, '-').slice(0, 31));
@@ -489,7 +539,7 @@ async function writeXlsx(payload) {
 
 async function refresh({ file, signal, writeFiles = true } = {}) {
   const { wb, from, bytes } = await loadWorkbook({ file, signal });
-  const { payload, warnings, totals } = extract(wb);
+  const { payload, warnings, totals, movedNotes } = extract(wb);
   const written = [];
   const softErrors = [];
 
@@ -504,7 +554,7 @@ async function refresh({ file, signal, writeFiles = true } = {}) {
         : 'XLSX not written: ' + e.message);
     }
   }
-  return { payload, warnings, totals, written, softErrors, from, bytes };
+  return { payload, warnings, totals, movedNotes, written, softErrors, from, bytes };
 }
 
 export { loadWorkbook, extract, refresh, writePlanJson, writeCsv, writeXlsx, readPlan, PLAN_JSON }
