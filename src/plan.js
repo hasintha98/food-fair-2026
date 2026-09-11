@@ -58,6 +58,49 @@ function hhmm(c) {
 
 const rowCells = (row, n) => Array.from({ length: n }, (_, i) => txt(row.getCell(i + 1)));
 
+const deMacron = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+const same = (a, b) => deMacron(a).toLowerCase().replace(/[^a-z0-9]/g, '') === deMacron(b).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * A map-search string that always lands in Auckland. Raw addresses from the
+ * sheet are sometimes missing the city or country, or carry stray commas and
+ * spaces ("2/41,, Frederic Street", "5/ 32, Beulah Avenue"), and Google will
+ * happily guess a street of the same name in another country.
+ */
+function mapQuery(address, suburb) {
+  let parts = clean(address)
+    .replace(/(\d)\s*\/\s*(\d)/g, '$1/$2')      // "5/ 32" -> "5/32"
+    .replace(/^(\S+)\.\s+/, '$1 ')              // "18. Basra Drive" -> "18 Basra Drive"
+    .replace(/\s*,\s*/g, ',')                   // tidy around commas
+    .split(',')
+    .map((p) => p.replace(/[.\s]+$/g, '').trim())
+    .filter(Boolean);
+
+  // drop consecutive repeats ("Auckland, Auckland") and generic/country tails; we re-add those
+  parts = parts.filter((p, i) => i === 0 || !same(p, parts[i - 1]));
+  parts = parts.filter((p) => !/^(new zealand|nz)$/i.test(p));
+  const city = /^auckland(\s+\d{4})?$/i;
+  const postcode =
+    parts.find((p) => city.test(p) && /\d{4}/.test(p))?.match(/\d{4}/)?.[0] ||
+    parts.find((p, i) => i > 0 && /^\d{4}$/.test(p));                        // bare "1023" part
+  parts = parts.filter((p, i) => !city.test(p) && !(i > 0 && /^\d{4}$/.test(p)));
+
+  // "10,Subritzky Avenue" -> "10 Subritzky Avenue": a bare number part belongs to the next part
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (/^[\w/-]+$/.test(parts[i]) && /\d/.test(parts[i]) && !/\d/.test(parts[i + 1][0] || '')) {
+      parts.splice(i, 2, parts[i] + ' ' + parts[i + 1]);
+    }
+  }
+
+  const sub = clean(suburb);
+  const subIsReal = sub && !/^auckland$/i.test(sub) && !/avenue|street|road|drive|place|lane$/i.test(sub);
+  if (subIsReal && !parts.some((p) => same(p, sub) || deMacron(p).toLowerCase().includes(deMacron(sub).toLowerCase()))) {
+    parts.push(sub);
+  }
+  parts.push(postcode ? `Auckland ${postcode}` : 'Auckland', 'New Zealand');
+  return parts.join(', ');
+}
+
 // Banner rows are merged across the tab, so every cell holds the same string.
 const isBanner = (cells) => {
   const set = new Set(cells.filter(Boolean));
@@ -212,6 +255,7 @@ function extract(wb) {
         address: c[7] || (m ? m.address : ''),
         suburb: c[8] || (m ? m.suburb : ''),
         instructions: c[9] || (m ? m.instructions : ''),
+        mapQuery: mapQuery(c[7] || (m ? m.address : ''), c[8] || (m ? m.suburb : '')),
         chicken: num(c[10]),
         veg: num(c[11]),
         packs: num(c[12]),
