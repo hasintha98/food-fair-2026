@@ -140,6 +140,18 @@ function hDotMm(v) {
 
 const UNASSIGNED = /^(driver\s+)?not\s+assigned|^tba$|^tbc$|^unassigned$/i;
 
+const toMin = (hhmm) => { const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+const fromMin = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+// "1:30 PM" / "13:30" -> minutes since midnight
+function deadlineMin(text) {
+  const m = String(text || '').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!m) return null;
+  let h = Number(m[1]); const mm = Number(m[2] || 0); const ap = (m[3] || '').toLowerCase();
+  if (ap === 'pm' && h < 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  return h * 60 + mm;
+}
+
 /**
  * Customers type everything into one "Instructions" box. Notes about the food
  * itself belong to the packers, not the driver, so they are split out at sync.
@@ -258,6 +270,22 @@ function extract(wb) {
       });
     }
   }
+  // ---- Timing: the Area List's "Est. Delivery Start Time" is the start, not the
+  // sheet's "Leave by" column. Finish = start + the route's own minutes. ----
+  const dlMin = deadlineMin(plan.facts['Delivery deadline']);
+  for (const r of routes) {
+    const a = areaByName.get(r.area);
+    r.leaveBySheet = r.leaveBy;
+    r.finishBySheet = r.finishBy;
+    r.startTime = (a && a.startTime) || r.leaveBy;
+    r.durationMin = r.totalMin || (r.depotDrive + r.betweenStops + r.stopTime + r.generalBuffer + r.eventBuffer);
+    const st = toMin(r.startTime);
+    r.estFinish = st != null && r.durationMin ? fromMin(st + r.durationMin) : '';
+    r.lateMin = st != null && dlMin != null && r.durationMin ? Math.max(0, st + r.durationMin - dlMin) : 0;
+    // what every screen and sheet shows
+    r.leaveBy = r.startTime;
+    r.finishBy = r.estFinish || r.finishBySheet;
+  }
   const routeById = new Map(routes.map((r) => [r.id, r]));
 
   // ---- Stops: the "(Master)" tab is one row per delivery with driver phone and area priority ----
@@ -312,8 +340,10 @@ function extract(wb) {
         areaPriority: prio ? Number(prio) : (areaByName.get(areaName)?.priority ?? 99),
         driver,
         driverPhone: (r && r.driverPhone) || phone(get(c, 'driverPhone')),
-        leaveBy: (ix.leaveBy >= 0 ? hhmm(row.getCell(ix.leaveBy + 1)) : '') || (r ? r.leaveBy : ''),
+        leaveBy: r ? r.leaveBy : '',
         finishBy: r ? r.finishBy : '',
+        durationMin: r ? r.durationMin : 0,
+        lateMin: r ? r.lateMin : 0,
         routeNote: r ? r.note : '',
         stopNo: num(get(c, 'stop')),
         customer: get(c, 'customer'),
@@ -353,6 +383,9 @@ function extract(wb) {
   for (const r of routes) {
     if (r.unassigned) attention.push({ kind: 'driver', route: r.id, text: `${r.id} ${r.area} (leave ${r.leaveBy}) has no driver assigned.` });
     else if (!r.driverPhone) attention.push({ kind: 'phone', route: r.id, text: `${r.id} ${r.driver} has no phone number.` });
+  }
+  for (const r of routes.filter((x) => x.lateMin > 0).sort((a, b) => b.lateMin - a.lateMin)) {
+    attention.push({ kind: 'late', route: r.id, text: r.id + ' ' + r.area + ' starts ' + r.startTime + ' and needs ' + r.durationMin + ' min — est. finish ' + r.estFinish + ', ' + r.lateMin + ' min after the ' + (plan.facts['Delivery deadline'] || 'deadline') + '.' });
   }
   for (const c of staffing.checks) {
     if (c.action && !/^none$/i.test(c.action) && !/duplicate-address|hibiscus/i.test(c.action) && !/exception/i.test(c.check)) {
@@ -417,6 +450,7 @@ function extract(wb) {
     doors: shareCount.size,
     packs: stops.reduce((a, b) => a + b.packs, 0),
     packingNotes: stops.filter((s) => s.packingInstructions).length,
+    lateRoutes: routes.filter((r) => r.lateMin > 0).length,
   };
 
   return { payload, warnings, totals, movedNotes };
@@ -431,7 +465,7 @@ function writePlanJson(payload) {
 
 const CSV_COLS = [
   ['seq', 'Seq'], ['route', 'Route'], ['routeRank', 'Rank'], ['areaPriority', 'Area priority'], ['area', 'Area'],
-  ['driver', 'Driver'], ['driverPhone', 'Driver phone'], ['leaveBy', 'Leave by'], ['finishBy', 'Finish by'],
+  ['driver', 'Driver'], ['driverPhone', 'Driver phone'], ['leaveBy', 'Est. start'], ['durationMin', 'Route min'], ['finishBy', 'Est. finish'],
   ['stopNo', 'Stop'], ['sharedStop', 'Orders at stop'], ['orderId', 'Order ID'],
   ['customer', 'Customer'], ['phone', 'Customer phone'],
   ['address', 'Address'], ['suburb', 'Suburb'],
@@ -482,7 +516,7 @@ async function writeXlsx(payload) {
     ['rank', 'Rank', 7], ['id', 'Route', 9], ['areaPriority', 'Area #', 8], ['area', 'Area', 22],
     ['driver', 'Driver', 18], ['driverPhone', 'Driver phone', 14],
     ['orders', 'Orders', 9], ['uniqueStops', 'Stops', 8],
-    ['leaveBy', 'Leave by', 10], ['finishBy', 'Finish by', 10], ['totalMin', 'Total min', 10],
+    ['startTime', 'Est. start', 10], ['durationMin', 'Route min', 10], ['estFinish', 'Est. finish', 10], ['lateMin', 'Late by', 8], ['leaveBySheet', 'Sheet leave', 11],
     ['packs', 'Packs', 8], ['suburbList', 'Suburbs', 52], ['note', 'Traffic / sequencing note', 54],
   ]);
   for (const r of routes) {
@@ -523,7 +557,7 @@ async function writeXlsx(payload) {
     const mine = orders.filter((s) => s.route === r.id).sort((a, b) => a.stopNo - b.stopNo);
     paint(ws, mine, RUN);
     const t = ws.addRow({
-      customer: `${r.area} · ${r.driver || 'no driver'}${r.driverPhone ? ' · ' + r.driverPhone : ''} · leave ${r.leaveBy} · finish by ${r.finishBy}`,
+      customer: `${r.area} · ${r.driver || 'no driver'}${r.driverPhone ? ' · ' + r.driverPhone : ''} · est. start ${r.startTime} · ${r.durationMin} min · est. finish ${r.estFinish}${r.lateMin ? ' (LATE by ' + r.lateMin + ' min)' : ''}`,
       chicken: mine.reduce((a, b) => a + b.chicken, 0),
       veg: mine.reduce((a, b) => a + b.veg, 0),
       packs: mine.reduce((a, b) => a + b.packs, 0),

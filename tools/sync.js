@@ -24,7 +24,7 @@ import { refresh, SHEET_EDIT_URL } from '../src/plan.js'
 
   console.log('\n=== ' + (payload.plan.title || 'Delivery plan') + ' ===')
   console.log(`routes ${totals.routes} | areas ${totals.areas} | drivers ${totals.drivers}${totals.unassigned ? ` | UNASSIGNED ${totals.unassigned}` : ''}`)
-  console.log(`deliveries ${totals.deliveries} | unique doors ${totals.doors} | packs ${totals.packs} | packing notes ${totals.packingNotes}`)
+  console.log(`deliveries ${totals.deliveries} | unique doors ${totals.doors} | packs ${totals.packs} | packing notes ${totals.packingNotes}${totals.lateRoutes ? ` | LATE ROUTES ${totals.lateRoutes}` : ''}`)
   if (movedNotes.length) {
     console.log(`
 --- ${movedNotes.length} instruction(s) moved from delivery to packing ---`)
