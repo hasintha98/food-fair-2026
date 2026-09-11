@@ -51,7 +51,7 @@ export const config = {
   passwordHash: env('DASHBOARD_PASSWORD_HASH', ''),
   sessionSecret: env('SESSION_SECRET', ''),
   sessionHours: int(env('SESSION_HOURS'), 24),
-  sheetId: env('SHEET_ID', '1f_2boP35XvSvzIkiI0IVwnyBItXGbW0J'),
+  sheetId: env('SHEET_ID', '1Bb7PPyYHRwWUCdPSTDCTV-KPqLxOC5x2rJnfET4w7QQ'),
   staticDir: path.resolve(BACKEND_DIR, env('STATIC_DIR', '../dashboard/dist')),
   exportDir: env('EXPORT_DIR', '..') ? path.resolve(BACKEND_DIR, env('EXPORT_DIR', '..')) : null,
   cookieSecure: env('COOKIE_SECURE', 'auto'),

@@ -23,9 +23,8 @@ import { refresh, SHEET_EDIT_URL } from '../src/plan.js'
   if (bytes) console.log(`  got ${(bytes / 1024).toFixed(0)} KB`)
 
   console.log('\n=== ' + (payload.plan.title || 'Delivery plan') + ' ===')
-  console.log(`routes ${totals.routes} | areas ${totals.areas} | drivers ${totals.drivers}`)
-  console.log(`routed deliveries ${totals.deliveries} | unique doors ${totals.doors} | pickups ${totals.pickups} | voids skipped ${totals.voids}`)
-  console.log(`packs ${totals.packs} | value $${totals.value.toFixed(0)}`)
+  console.log(`routes ${totals.routes} | areas ${totals.areas} | drivers ${totals.drivers}${totals.unassigned ? ` | UNASSIGNED ${totals.unassigned}` : ''}`)
+  console.log(`deliveries ${totals.deliveries} | unique doors ${totals.doors} | packs ${totals.packs}`)
 
   if (warnings.length) {
     console.log('\n--- CHECKS ---')

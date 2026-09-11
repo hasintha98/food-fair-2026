@@ -126,19 +126,42 @@ async function loadWorkbook({ file, signal } = {}) {
 }
 
 // ------------------------------------------------------------------ extract
+// "7.15" in the Area List means 07:15 (hours.minutes), not 7.15 hours.
+function hDotMm(v) {
+  const s = clean(v);
+  if (!s) return '';
+  const m = s.match(/^(\d{1,2})(?:\.(\d{1,2}))?$/);
+  if (!m) return s;
+  const h = Number(m[1]);
+  const mm = m[2] ? Number(m[2].length === 1 ? m[2] + '0' : m[2]) : 0;
+  if (h > 23 || mm > 59) return s;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+const UNASSIGNED = /^(driver\s+)?not\s+assigned|^tba$|^tbc$|^unassigned$/i;
+
+// ------------------------------------------------------------------ extract
 function extract(wb) {
-  const sheet = (want) => {
+  const sheet = (want, { optional = false } = {}) => {
     const ws = wb.worksheets.find((w) => w.name.toLowerCase().startsWith(want.toLowerCase()));
-    if (!ws) throw new Error(`Tab not found: ${want}. Tabs present: ${wb.worksheets.map((w) => w.name).join(', ')}`);
-    return ws;
+    if (!ws && !optional) {
+      throw new Error(`Tab not found: ${want}. Tabs present: ${wb.worksheets.map((w) => w.name).join(', ')}`);
+    }
+    return ws || null;
+  };
+  const findHeader = (ws, width, test) => {
+    let head = -1;
+    const rows = [];
+    ws.eachRow({ includeEmpty: false }, (r, i) => rows.push({ i, c: rowCells(r, width), row: r }));
+    for (const { i, c } of rows) if (test(c)) { head = i; break; }
+    return { head, rows };
   };
 
   // ---- Overview ----
-  const ov = sheet('Overview');
   const plan = { facts: {}, decisions: [], assumptions: [] };
   {
     const rows = [];
-    ov.eachRow({ includeEmpty: false }, (r) => rows.push(rowCells(r, 6)));
+    sheet('Overview').eachRow({ includeEmpty: false }, (r) => rows.push(rowCells(r, 6)));
     plan.title = rows.length ? rows[0].find(Boolean) || '' : '';
     let section = 'facts';
     for (const c of rows.slice(1)) {
@@ -156,23 +179,48 @@ function extract(wb) {
     }
   }
 
+  // ---- Area List: packing priority and estimated dispatch start per area ----
+  const areas = [];
+  {
+    const ws = sheet('Area List', { optional: true });
+    if (ws) {
+      const { head, rows } = findHeader(ws, 9, (c) => c[0] === 'Area' && /priority/i.test(c[1]));
+      if (head > 0) {
+        for (const { i, c } of rows) {
+          if (i <= head || !c[0] || !c[1]) continue;
+          areas.push({
+            name: c[0],
+            priority: num(c[1]),
+            label: c[2] || `(${String(num(c[1])).padStart(2, '0')}) ${c[0]}`,
+            startTime: hDotMm(c[4]),
+            cumulativePacks: num(c[5]),
+            packs: num(c[6]),
+          });
+        }
+      }
+    }
+    areas.sort((a, b) => a.priority - b.priority);
+  }
+  const areaByName = new Map(areas.map((a) => [a.name, a]));
+
   // ---- Route Summary ----
-  const rsWs = sheet('Route Summary');
   const routes = [];
   {
-    const rows = [];
-    rsWs.eachRow({ includeEmpty: false }, (r, i) => rows.push({ i, c: rowCells(r, 17), row: r }));
-    let head = -1;
-    for (const { i, c } of rows) if (c[0] === 'Rank' && c[1] === 'Route') { head = i; break; }
+    const ws = sheet('Route Summary');
+    const { head, rows } = findHeader(ws, 17, (c) => c[0] === 'Rank' && c[1] === 'Route');
     if (head < 0) throw new Error('Could not find the header row on Route Summary');
     for (const { i, c, row } of rows) {
       if (i <= head || !c[1]) continue;
+      const driverRaw = c[3];
+      const unassigned = !driverRaw || UNASSIGNED.test(driverRaw);
       routes.push({
         id: c[1],
         rank: num(c[0]),
         area: c[2],
-        slot: c[3],
-        driver: c[4] || c[3],
+        areaPriority: areaByName.get(c[2])?.priority ?? 99,
+        driver: unassigned ? '' : driverRaw,
+        driverPhone: phone(c[4]),
+        unassigned,
         orders: num(c[5]),
         uniqueStops: num(c[6]),
         suburbs: c[7] ? c[7].split(',').map((s) => s.trim()).filter(Boolean) : [],
@@ -190,89 +238,63 @@ function extract(wb) {
   }
   const routeById = new Map(routes.map((r) => [r.id, r]));
 
-  // ---- Master Data ----
-  const md = wb.worksheets.find((w) => /^master/i.test(w.name)) || wb.worksheets[0];
-  const master = new Map();
-  const voids = [];
-  md.eachRow({ includeEmpty: false }, (row, i) => {
-    if (i === 1) return;
-    const orderId = txt(row.getCell(3));
-    if (!orderId) return;
-    const customer = txt(row.getCell(4));
-    const rec = {
-      orderId,
-      sheetRow: i,
-      orderDate: txt(row.getCell(1)),
-      takenBy: txt(row.getCell(2)),
-      customer,
-      email: txt(row.getCell(5)),
-      phone: phone(txt(row.getCell(6))),
-      address: txt(row.getCell(7)),
-      mode: txt(row.getCell(8)),
-      instructions: txt(row.getCell(9)),
-      chicken: num(txt(row.getCell(10))),
-      veg: num(txt(row.getCell(11))),
-      total: num(txt(row.getCell(12))),
-      paid: txt(row.getCell(13)),
-      banked: num(txt(row.getCell(14))),
-      paymentStatus: txt(row.getCell(15)),
-      suburb: txt(row.getCell(16)),
-      notes: txt(row.getCell(17)),
-    };
-    if (/^void/i.test(customer)) { voids.push(rec); return; }
-    master.set(orderId, rec);
-  });
-
-  // ---- Detailed Stops ----
-  const dsWs = sheet('Detailed Stops');
+  // ---- Stops: the "(Master)" tab is one row per delivery with driver phone and area priority ----
   const stops = [];
   {
-    const rows = [];
-    dsWs.eachRow({ includeEmpty: false }, (r, i) => rows.push({ i, c: rowCells(r, 13), row: r }));
-    let head = -1;
-    for (const { i, c } of rows) if (c[0] === 'Route' && c[4] === 'Order ID') { head = i; break; }
-    if (head < 0) throw new Error('Could not find the header row on Detailed Stops');
+    const ws = sheet('Filter by Area (Master)', { optional: true }) || sheet('Detailed Stops');
+    const width = 16;
+    const { head, rows } = findHeader(ws, width, (c) => c[0] === 'Route' && c.includes('Order ID'));
+    if (head < 0) throw new Error(`Could not find the header row on ${ws.name}`);
+    const H = rows.find((r) => r.i === head).c;
+    const col = (name) => H.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+    const ix = {
+      route: col('Route'), area: col('Area'), driver: col('Driver'), driverPhone: col('Driver phone'),
+      stop: col('Stop'), orderId: col('Order ID'), customer: col('Customer'),
+      phone: col('Customer phone') >= 0 ? col('Customer phone') : col('Phone'),
+      address: col('Address'), suburb: col('Suburb'), instructions: col('Instructions'),
+      chicken: col('Chicken'), veg: col('Vegetable'), packs: col('Total packs'),
+      areaPriority: col('Area by Priority'), leaveBy: col('Leave by'),
+    };
+    const get = (c, k) => (ix[k] >= 0 ? c[ix[k]] : '');
+
     for (const { i, c, row } of rows) {
       if (i <= head) continue;
-      const routeId = c[0];
-      const orderId = c[4];
+      const routeId = get(c, 'route');
+      const orderId = get(c, 'orderId');
       if (!routeId || !orderId) continue;
       const r = routeById.get(routeId);
-      const m = master.get(orderId);
+      const areaName = get(c, 'area') || (r ? r.area : '');
+      const prioLabel = get(c, 'areaPriority');
+      const prio = prioLabel.match(/^\((\d+)\)/)?.[1];
+      const driverRaw = get(c, 'driver');
+      const driver = r ? r.driver : (UNASSIGNED.test(driverRaw) ? '' : driverRaw);
       stops.push({
         orderId,
         route: routeId,
         routeRank: r ? r.rank : 0,
-        area: r ? r.area : '',
-        slot: c[1] || (r ? r.slot : ''),
-        driver: r ? r.driver : '',
-        leaveBy: hhmm(row.getCell(3)) || (r ? r.leaveBy : ''),
+        area: areaName,
+        areaPriority: prio ? Number(prio) : (areaByName.get(areaName)?.priority ?? 99),
+        driver,
+        driverPhone: (r && r.driverPhone) || phone(get(c, 'driverPhone')),
+        leaveBy: (ix.leaveBy >= 0 ? hhmm(row.getCell(ix.leaveBy + 1)) : '') || (r ? r.leaveBy : ''),
         finishBy: r ? r.finishBy : '',
         routeNote: r ? r.note : '',
-        stopNo: num(c[3]),
-        customer: c[5] || (m ? m.customer : ''),
-        phone: phone(c[6]) || (m ? m.phone : ''),
-        address: c[7] || (m ? m.address : ''),
-        suburb: c[8] || (m ? m.suburb : ''),
-        instructions: c[9] || (m ? m.instructions : ''),
-        mapQuery: mapQuery(c[7] || (m ? m.address : ''), c[8] || (m ? m.suburb : '')),
-        chicken: num(c[10]),
-        veg: num(c[11]),
-        packs: num(c[12]),
-        email: m ? m.email : '',
-        total: m ? m.total : 0,
-        paid: m ? m.paid : '',
-        paymentStatus: m ? m.paymentStatus : '',
-        banked: m ? m.banked : 0,
-        takenBy: m ? m.takenBy : '',
-        orderDate: m ? m.orderDate : '',
-        notes: m ? m.notes : '',
-        sheetRow: m ? m.sheetRow : 0,
+        stopNo: num(get(c, 'stop')),
+        customer: get(c, 'customer'),
+        phone: phone(get(c, 'phone')),
+        address: get(c, 'address'),
+        mapQuery: mapQuery(get(c, 'address'), get(c, 'suburb')),
+        suburb: get(c, 'suburb'),
+        instructions: get(c, 'instructions'),
+        chicken: num(get(c, 'chicken')),
+        veg: num(get(c, 'veg')),
+        packs: num(get(c, 'packs')) || num(get(c, 'chicken')) + num(get(c, 'veg')),
         mode: 'Delivery',
       });
     }
   }
 
+  // Orders that share one physical door (same route + stop number).
   const shareCount = new Map();
   for (const s of stops) {
     const k = s.route + '|' + s.stopNo;
@@ -280,61 +302,58 @@ function extract(wb) {
   }
   for (const s of stops) s.sharedStop = shareCount.get(s.route + '|' + s.stopNo);
 
-  // ---- pickups: in Master, deliberately not routed ----
-  const routed = new Set(stops.map((s) => s.orderId));
-  const pickups = [...master.values()]
-    .filter((m) => !routed.has(m.orderId))
-    .map((m) => ({
-      ...m,
-      route: '', routeRank: 999, area: 'Pickup', slot: '', driver: '',
-      leaveBy: '', finishBy: '', routeNote: '', stopNo: 0,
-      packs: m.chicken + m.veg, sharedStop: 1,
-    }))
-    .sort((a, b) => a.orderId.localeCompare(b.orderId, undefined, { numeric: true }));
-
   // ---- Staffing Checks ----
-  const stWs = sheet('Staffing');
   const staffing = { checks: [], sizes: [] };
-  stWs.eachRow({ includeEmpty: false }, (r) => {
+  sheet('Staffing').eachRow({ includeEmpty: false }, (r) => {
     const c = rowCells(r, 7);
     if (isBanner(c)) return;
     if (c[0] && c[0] !== 'Check') staffing.checks.push({ check: c[0], result: c[1], action: c[2] });
     if (c[4] && c[4] !== 'Route size') staffing.sizes.push({ size: num(c[4]), routes: num(c[5]), status: c[6] });
   });
 
+  // ---- things a coordinator has to deal with before dispatch ----
+  const attention = [];
+  for (const r of routes) {
+    if (r.unassigned) attention.push({ kind: 'driver', route: r.id, text: `${r.id} ${r.area} (leave ${r.leaveBy}) has no driver assigned.` });
+    else if (!r.driverPhone) attention.push({ kind: 'phone', route: r.id, text: `${r.id} ${r.driver} has no phone number.` });
+  }
+  for (const c of staffing.checks) {
+    if (c.action && !/^none$/i.test(c.action) && !/duplicate-address|hibiscus/i.test(c.action) && !/exception/i.test(c.check)) {
+      const dup = attention.some((a) => c.action.includes(a.route || ' '));
+      if (!dup) attention.push({ kind: 'check', route: '', text: `${c.check}: ${c.action}` });
+    }
+  }
+
   // ---- order the way the day runs ----
-  const all = [...stops, ...pickups].sort((a, b) => {
-    if (a.routeRank !== b.routeRank) return a.routeRank - b.routeRank;
-    if (a.route !== b.route) return a.route.localeCompare(b.route);
-    if (a.stopNo !== b.stopNo) return a.stopNo - b.stopNo;
-    return a.orderId.localeCompare(b.orderId, undefined, { numeric: true });
-  });
-  all.forEach((o, i) => { o.seq = i + 1; });
+  stops.sort((a, b) =>
+    (a.routeRank - b.routeRank) || a.route.localeCompare(b.route) || (a.stopNo - b.stopNo) ||
+    a.orderId.localeCompare(b.orderId, undefined, { numeric: true }));
+  stops.forEach((o, i) => { o.seq = i + 1; });
   routes.sort((a, b) => a.rank - b.rank);
 
   // ---- cross-tab checks ----
   const warnings = [];
-  const noMaster = stops.filter((s) => !master.has(s.orderId));
-  if (noMaster.length) warnings.push(`${noMaster.length} routed order(s) are not in Master: ${noMaster.map((s) => s.orderId).join(', ')}`);
-
-  const unrouted = [...master.values()].filter((m) => m.mode === 'Delivery' && !routed.has(m.orderId));
-  if (unrouted.length) warnings.push(`${unrouted.length} Master delivery(s) have no route: ${unrouted.map((m) => m.orderId).join(', ')}`);
-
-  const notPickup = pickups.filter((p) => p.mode !== 'Pickup');
-  if (notPickup.length) warnings.push(`${notPickup.length} unrouted order(s) are not marked Pickup: ${notPickup.map((p) => p.orderId).join(', ')}`);
-
   for (const r of routes) {
     const got = stops.filter((s) => s.route === r.id).length;
-    if (r.orders && got !== r.orders) warnings.push(`${r.id}: Route Summary says ${r.orders} orders, Detailed Stops has ${got}`);
+    if (r.orders && got !== r.orders) warnings.push(`${r.id}: Route Summary says ${r.orders} orders, stop list has ${got}`);
   }
   const orphan = stops.filter((s) => !routeById.has(s.route));
-  if (orphan.length) warnings.push(`${orphan.length} stop(s) reference a route missing from Route Summary`);
-
-  const byDriver = {};
-  for (const r of routes) (byDriver[r.driver] ||= []).push(r.id);
-  for (const [d, ids] of Object.entries(byDriver)) {
-    if (ids.length > 1) warnings.push(`driver "${d}" is on ${ids.length} routes: ${ids.join(', ')}`);
+  if (orphan.length) warnings.push(`${orphan.length} stop(s) reference a route missing from Route Summary: ${[...new Set(orphan.map((s) => s.route))].join(', ')}`);
+  const ds = sheet('Detailed Stops', { optional: true });
+  if (ds) {
+    const ids = new Set();
+    ds.eachRow({ includeEmpty: false }, (r) => { const c = rowCells(r, 6); if (/^WEB-/i.test(c[4])) ids.add(c[4]); });
+    const mine = new Set(stops.map((s) => s.orderId));
+    const onlyDs = [...ids].filter((x) => !mine.has(x));
+    const onlyMaster = [...mine].filter((x) => !ids.has(x));
+    if (onlyDs.length) warnings.push(`${onlyDs.length} order(s) in Detailed Stops but not in the Master tab: ${onlyDs.slice(0, 10).join(', ')}`);
+    if (onlyMaster.length) warnings.push(`${onlyMaster.length} order(s) in the Master tab but not in Detailed Stops: ${onlyMaster.slice(0, 10).join(', ')}`);
   }
+  const claimed = num(plan.facts['Delivery orders']);
+  if (claimed && claimed !== stops.length) warnings.push(`Overview says ${claimed} delivery orders, found ${stops.length}`);
+  const claimedDoors = num(plan.facts['Unique delivery stops']);
+  if (claimedDoors && claimedDoors !== shareCount.size) warnings.push(`Overview says ${claimedDoors} unique stops, found ${shareCount.size}`);
+  for (const a of attention) warnings.push(a.text);
 
   const payload = {
     plan: {
@@ -345,21 +364,20 @@ function extract(wb) {
       syncedAt: new Date().toISOString(),
     },
     routes,
-    orders: all,
-    voids: voids.map((v) => ({ orderId: v.orderId, customer: v.customer, notes: v.notes, sheetRow: v.sheetRow })),
+    areas,
+    orders: stops,
     staffing,
+    attention,
   };
 
   const totals = {
     routes: routes.length,
     areas: new Set(routes.map((r) => r.area)).size,
-    drivers: new Set(routes.map((r) => r.driver)).size,
+    drivers: new Set(routes.filter((r) => r.driver).map((r) => r.driver)).size,
+    unassigned: routes.filter((r) => r.unassigned).length,
     deliveries: stops.length,
     doors: shareCount.size,
-    pickups: pickups.length,
-    voids: voids.length,
     packs: stops.reduce((a, b) => a + b.packs, 0),
-    value: all.reduce((a, b) => a + b.total, 0),
   };
 
   return { payload, warnings, totals };
@@ -373,15 +391,13 @@ function writePlanJson(payload) {
 }
 
 const CSV_COLS = [
-  ['seq', 'Seq'], ['route', 'Route'], ['routeRank', 'Rank'], ['area', 'Area'],
-  ['driver', 'Driver'], ['slot', 'Driver slot'], ['leaveBy', 'Leave by'], ['finishBy', 'Finish by'],
+  ['seq', 'Seq'], ['route', 'Route'], ['routeRank', 'Rank'], ['areaPriority', 'Area priority'], ['area', 'Area'],
+  ['driver', 'Driver'], ['driverPhone', 'Driver phone'], ['leaveBy', 'Leave by'], ['finishBy', 'Finish by'],
   ['stopNo', 'Stop'], ['sharedStop', 'Orders at stop'], ['orderId', 'Order ID'],
-  ['customer', 'Customer'], ['phone', 'Phone'], ['email', 'Email'],
-  ['address', 'Address'], ['suburb', 'Suburb'], ['mode', 'Type'],
+  ['customer', 'Customer'], ['phone', 'Customer phone'],
+  ['address', 'Address'], ['suburb', 'Suburb'],
   ['chicken', 'Chicken'], ['veg', 'Veg'], ['packs', 'Packs'],
-  ['total', 'Total $'], ['paid', 'Paid'], ['paymentStatus', 'Payment'], ['banked', 'Banked $'],
-  ['takenBy', 'Order taken by'], ['instructions', 'Instructions'], ['notes', 'Notes'],
-  ['routeNote', 'Route note'], ['orderDate', 'Ordered'], ['sheetRow', 'Master row'],
+  ['instructions', 'Instructions'], ['routeNote', 'Route note'], ['mapQuery', 'Map search'],
 ];
 
 function writeCsv(payload) {
@@ -398,9 +414,7 @@ function writeCsv(payload) {
 }
 
 async function writeXlsx(payload) {
-  const { routes, orders } = payload;
-  const stops = orders.filter((o) => o.mode === 'Delivery');
-  const pickups = orders.filter((o) => o.mode !== 'Delivery');
+  const { routes, orders, areas } = payload;
 
   const out = new ExcelJS.Workbook();
   out.creator = 'Food Fair 2026 delivery plan';
@@ -417,15 +431,7 @@ async function writeXlsx(payload) {
     ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
   };
   const paint = (ws, list, cols) => {
-    const has = new Set(cols.map((c) => c[0]));
-    for (const o of list) {
-      const row = ws.addRow(Object.fromEntries(cols.map((c) => [c[0], o[c[0]]])));
-      if (has.has('paymentStatus')) {
-        if (o.paymentStatus === 'Outstanding') row.getCell('paymentStatus').font = { color: { argb: 'FFC00000' } };
-        if (o.paymentStatus === 'Paid') row.getCell('paymentStatus').font = { color: { argb: 'FF1E7B34' } };
-      }
-      for (const k of ['total', 'banked']) if (has.has(k)) row.getCell(k).numFmt = '#,##0.00';
-    }
+    for (const o of list) ws.addRow(Object.fromEntries(cols.map((c) => [c[0], o[c[0]]])));
     ws.eachRow({ includeEmpty: false }, (r, i) => {
       if (i > 1 && i % 2 === 0) r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4F7F9' } };
     });
@@ -433,23 +439,23 @@ async function writeXlsx(payload) {
 
   const sum = out.addWorksheet('Routes', { properties: { tabColor: { argb: 'FF1F4E5F' } } });
   dress(sum, [
-    ['rank', 'Rank', 7], ['id', 'Route', 9], ['area', 'Area', 22], ['slot', 'Slot', 10],
-    ['driver', 'Driver', 16], ['orders', 'Orders', 9], ['uniqueStops', 'Stops', 8],
+    ['rank', 'Rank', 7], ['id', 'Route', 9], ['areaPriority', 'Area #', 8], ['area', 'Area', 22],
+    ['driver', 'Driver', 18], ['driverPhone', 'Driver phone', 14],
+    ['orders', 'Orders', 9], ['uniqueStops', 'Stops', 8],
     ['leaveBy', 'Leave by', 10], ['finishBy', 'Finish by', 10], ['totalMin', 'Total min', 10],
-    ['packs', 'Packs', 8], ['value', 'Value $', 11], ['owing', 'Owing $', 11],
-    ['suburbList', 'Suburbs', 52], ['note', 'Traffic / sequencing note', 54],
+    ['packs', 'Packs', 8], ['suburbList', 'Suburbs', 52], ['note', 'Traffic / sequencing note', 54],
   ]);
   for (const r of routes) {
-    const mine = stops.filter((s) => s.route === r.id);
-    sum.addRow({
-      ...r,
-      packs: mine.reduce((a, b) => a + b.packs, 0),
-      value: mine.reduce((a, b) => a + b.total, 0),
-      owing: mine.filter((s) => s.paymentStatus === 'Outstanding').reduce((a, b) => a + b.total, 0),
-      suburbList: r.suburbs.join(', '),
-    });
+    const mine = orders.filter((s) => s.route === r.id);
+    sum.addRow({ ...r, driver: r.driver || 'DRIVER NOT ASSIGNED', packs: mine.reduce((a, b) => a + b.packs, 0), suburbList: r.suburbs.join(', ') });
+    if (r.unassigned) sum.lastRow.getCell('driver').font = { color: { argb: 'FFC00000' }, bold: true };
   }
-  sum.eachRow((r, i) => { if (i > 1) ['value', 'owing'].forEach((k) => (r.getCell(k).numFmt = '#,##0.00')); });
+
+  if (areas.length) {
+    const aw = out.addWorksheet('Area schedule');
+    dress(aw, [['priority', 'Priority', 9], ['name', 'Area', 26], ['startTime', 'Est. start', 11], ['packs', 'Packs', 8], ['cumulativePacks', 'Cumulative', 11]]);
+    paint(aw, areas, [['priority'], ['name'], ['startTime'], ['packs'], ['cumulativePacks']]);
+  }
 
   const ALL = CSV_COLS.map(([k, l]) => [k, l, Math.min(46, Math.max(9, l.length + 4))]);
   const allWs = out.addWorksheet('All stops', { properties: { tabColor: { argb: 'FF2E7D32' } } });
@@ -459,39 +465,28 @@ async function writeXlsx(payload) {
   const RUN = [
     ['stopNo', 'Stop', 7], ['orderId', 'Order ID', 11], ['customer', 'Customer', 26],
     ['phone', 'Phone', 15], ['address', 'Address', 48], ['suburb', 'Suburb', 18],
-    ['chicken', 'Chicken', 9], ['veg', 'Veg', 7], ['packs', 'Packs', 8],
-    ['total', 'Total $', 10], ['paymentStatus', 'Payment', 13], ['instructions', 'Instructions', 34],
+    ['chicken', 'Chicken', 9], ['veg', 'Veg', 7], ['packs', 'Packs', 8], ['instructions', 'Instructions', 34],
   ];
   for (const r of routes) {
-    const ws = out.addWorksheet((r.id + ' ' + r.driver).replace(/[\\/?*[\]:]/g, '-').slice(0, 31));
+    const ws = out.addWorksheet((r.id + ' ' + (r.driver || 'UNASSIGNED')).replace(/[\\/?*[\]:]/g, '-').slice(0, 31));
     dress(ws, RUN);
-    const mine = stops.filter((s) => s.route === r.id).sort((a, b) => a.stopNo - b.stopNo);
+    const mine = orders.filter((s) => s.route === r.id).sort((a, b) => a.stopNo - b.stopNo);
     paint(ws, mine, RUN);
     const t = ws.addRow({
-      customer: `${r.area} · leave ${r.leaveBy} · finish by ${r.finishBy}`,
+      customer: `${r.area} · ${r.driver || 'no driver'}${r.driverPhone ? ' · ' + r.driverPhone : ''} · leave ${r.leaveBy} · finish by ${r.finishBy}`,
       chicken: mine.reduce((a, b) => a + b.chicken, 0),
       veg: mine.reduce((a, b) => a + b.veg, 0),
       packs: mine.reduce((a, b) => a + b.packs, 0),
-      total: mine.reduce((a, b) => a + b.total, 0),
     });
     t.font = { bold: true };
     t.border = { top: { style: 'double' } };
   }
-
-  const pk = out.addWorksheet('Pickup');
-  dress(pk, RUN);
-  paint(pk, pickups, RUN);
 
   const p = path.join(OUT, OUT_BASE + '.xlsx');
   await out.xlsx.writeFile(p);
   return p;
 }
 
-/**
- * Full refresh: fetch, extract, write plan.json (always) and the CSV/XLSX
- * (best effort — Excel locks an open workbook on Windows, which must not fail
- * a refresh triggered from the browser).
- */
 async function refresh({ file, signal, writeFiles = true } = {}) {
   const { wb, from, bytes } = await loadWorkbook({ file, signal });
   const { payload, warnings, totals } = extract(wb);

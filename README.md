@@ -55,6 +55,7 @@ Hosted platforms don't read `.env` — they inject **Variables**. Set these on t
 | Variable | Value |
 |---|---|
 | `DASHBOARD_PASSWORD_HASH` | output of `npm run hash-password` (run locally) |
+| `SHEET_ID` | `1Bb7PPyYHRwWUCdPSTDCTV-KPqLxOC5x2rJnfET4w7QQ` — only needed if you had set the old one explicitly |
 | `SESSION_SECRET` | any 64 random hex chars — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `CORS_ORIGIN` | the frontend's origin, e.g. `https://foodfair.netlify.app` — no path, no trailing slash |
 | `EXPORT_DIR` | leave **empty** (no point writing CSV/XLSX to an ephemeral disk) |
