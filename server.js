@@ -13,7 +13,7 @@ import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config, assertConfig } from './src/config.js'
-import { securityHeaders, serveStatic, json } from './src/http.js'
+import { securityHeaders, serveStatic, json, cors } from './src/http.js'
 import { router } from './src/routes.js'
 import { readPlan } from './src/plan.js'
 
@@ -31,6 +31,7 @@ const server = http.createServer(async (req, res) => {
   securityHeaders(res)
 
   if ((req.url || '').startsWith('/api/')) {
+    if (cors(req, res, config.corsOrigins)) return
     if (!(await router.dispatch(req, res, {}))) json(res, 404, { ok: false, error: 'Not found' })
     return
   }
@@ -58,6 +59,10 @@ server.listen(config.port, () => {
   console.log(`  Session:  ${config.sessionHours}h after unlock`)
   console.log(`  Data:     ${plan ? `${plan.orders.length} orders, synced ${plan.plan.syncedAt}` : 'not synced yet — press Refresh or run `npm run sync`'}`)
   console.log(`  Frontend: ${hasBuild ? config.staticDir : 'NOT BUILT — run `npm run build` in ../dashboard'}`)
+  if (config.corsOrigins.length) {
+    console.log(`  CORS:     ${config.corsOrigins.join(', ')}`)
+    console.log('            cookie is SameSite=None; Secure — serve this API over https or browsers will drop it')
+  }
   console.log('')
 })
 

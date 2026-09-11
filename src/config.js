@@ -55,6 +55,8 @@ export const config = {
   staticDir: path.resolve(BACKEND_DIR, env('STATIC_DIR', '../dashboard/dist')),
   exportDir: env('EXPORT_DIR', '..') ? path.resolve(BACKEND_DIR, env('EXPORT_DIR', '..')) : null,
   cookieSecure: env('COOKIE_SECURE', 'auto'),
+  // Origins allowed to call the API from another site (comma-separated). Empty = same-origin only.
+  corsOrigins: String(env('CORS_ORIGIN', '')).split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
   loginMaxAttempts: int(env('LOGIN_MAX_ATTEMPTS'), 5),
   loginLockMinutes: int(env('LOGIN_LOCK_MINUTES'), 15),
 }
@@ -69,6 +71,9 @@ export function assertConfig(c = config) {
   if (!c.sessionSecret) problems.push('SESSION_SECRET is not set — run `npm run set-password` (it generates one).')
   else if (c.sessionSecret.length < 32) problems.push('SESSION_SECRET is too short — it should be at least 32 characters.')
   if (!['auto', 'true', 'false'].includes(c.cookieSecure)) problems.push('COOKIE_SECURE must be auto, true or false.')
+  for (const o of c.corsOrigins) {
+    if (!/^https?:\/\/[^/]+$/.test(o)) problems.push(`CORS_ORIGIN entry "${o}" must be a bare origin like https://app.example.com (no path).`)
+  }
   if (problems.length) {
     const err = new Error('Configuration is incomplete:\n  - ' + problems.join('\n  - '))
     err.code = 'ECONFIG'

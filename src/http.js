@@ -65,6 +65,35 @@ export function securityHeaders(res) {
   ].join('; '))
 }
 
+// ---------------------------------------------------------------- cors
+
+/**
+ * Only for a frontend hosted on another origin. Echoes the Origin back when it
+ * is on the allowlist (never "*" — credentials need an exact match), answers
+ * preflights, and returns true when the request has been fully handled.
+ */
+export function cors(req, res, allowed) {
+  if (!allowed.length) return false
+  const origin = req.headers.origin
+  if (!origin || !allowed.includes(origin)) {
+    if (req.method === 'OPTIONS') { res.writeHead(403); res.end(); return true }
+    return false
+  }
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  res.setHeader('Vary', 'Origin')
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Accept',
+      'Access-Control-Max-Age': '600',
+    })
+    res.end()
+    return true
+  }
+  return false
+}
+
 // ---------------------------------------------------------------- router
 
 export class Router {

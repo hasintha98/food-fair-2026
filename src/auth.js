@@ -88,20 +88,24 @@ export function parseCookies(header) {
   return out
 }
 
-export function sessionCookie(token, { maxAgeSec, secure }) {
+/**
+ * Same-origin: SameSite=Strict. Cross-site (frontend hosted elsewhere):
+ * SameSite=None, which browsers only honour together with Secure.
+ */
+export function sessionCookie(token, { maxAgeSec, secure, crossSite = false }) {
   const bits = [
     `${COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Strict',
+    crossSite ? 'SameSite=None' : 'SameSite=Strict',
     `Max-Age=${maxAgeSec}`,
   ]
-  if (secure) bits.push('Secure')
+  if (secure || crossSite) bits.push('Secure')
   return bits.join('; ')
 }
 
-export function clearCookie({ secure }) {
-  return sessionCookie('', { maxAgeSec: 0, secure })
+export function clearCookie({ secure, crossSite = false }) {
+  return sessionCookie('', { maxAgeSec: 0, secure, crossSite })
 }
 
 export const newSecret = () => randomBytes(32).toString('hex')

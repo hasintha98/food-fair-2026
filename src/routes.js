@@ -18,6 +18,7 @@ const limiter = new LoginLimiter({ maxAttempts: config.loginMaxAttempts, lockMin
 
 const cookieSecure = (req) =>
   config.cookieSecure === 'true' ? true : config.cookieSecure === 'false' ? false : isHttps(req)
+const crossSite = config.corsOrigins.length > 0
 
 /** Reads and verifies the session cookie; null when absent, forged, expired or from an old password. */
 function sessionOf(req) {
@@ -76,12 +77,12 @@ router.post('/api/login', async (req, res) => {
     secret: config.sessionSecret, passwordHash: config.passwordHash, hours: config.sessionHours,
   })
   json(res, 200, { ok: true, expiresAt }, {
-    'Set-Cookie': sessionCookie(token, { maxAgeSec: config.sessionHours * 3600, secure: cookieSecure(req) }),
+    'Set-Cookie': sessionCookie(token, { maxAgeSec: config.sessionHours * 3600, secure: cookieSecure(req), crossSite }),
   })
 })
 
 router.post('/api/logout', (req, res) => {
-  json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: cookieSecure(req) }) })
+  json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: cookieSecure(req), crossSite }) })
 })
 
 router.get('/api/session', (req, res) => {
