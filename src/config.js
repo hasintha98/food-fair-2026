@@ -55,6 +55,8 @@ export const config = {
   staticDir: path.resolve(BACKEND_DIR, env('STATIC_DIR', '../dashboard/dist')),
   exportDir: env('EXPORT_DIR', '..') ? path.resolve(BACKEND_DIR, env('EXPORT_DIR', '..')) : null,
   cookieSecure: env('COOKIE_SECURE', 'auto'),
+  // Pull the sheet on boot when there is no cached plan (hosts with ephemeral disks lose it on every deploy).
+  syncOnStart: String(env('SYNC_ON_START', 'true')).toLowerCase() !== 'false',
   // Origins allowed to call the API from another site (comma-separated). Empty = same-origin only.
   corsOrigins: String(env('CORS_ORIGIN', '')).split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
   loginMaxAttempts: int(env('LOGIN_MAX_ATTEMPTS'), 5),

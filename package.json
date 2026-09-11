@@ -4,12 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Serves the delivery dashboard behind a password and owns the plan data.",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "set-password": "node tools/set-password.js",
-    "sync": "node tools/sync.js"
+    "sync": "node tools/sync.js",
+    "hash-password": "node tools/hash-password.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0"

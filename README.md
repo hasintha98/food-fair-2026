@@ -47,6 +47,38 @@ any time to change the password — **every device is logged out** when you do.
 | `POST /api/refresh` | ✔ | Re-reads the sheet, rewrites the cache and exports, returns the plan. Concurrent calls share one download. |
 | `GET /api/health` | – | Liveness only. |
 
+## Hosted (Railway + Netlify)
+
+Hosted platforms don't read `.env` — they inject **Variables**. Set these on the
+**backend** service (Railway):
+
+| Variable | Value |
+|---|---|
+| `DASHBOARD_PASSWORD_HASH` | output of `npm run hash-password` (run locally) |
+| `SESSION_SECRET` | any 64 random hex chars — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `CORS_ORIGIN` | the frontend's origin, e.g. `https://foodfair.netlify.app` — no path, no trailing slash |
+| `EXPORT_DIR` | leave **empty** (no point writing CSV/XLSX to an ephemeral disk) |
+| `SYNC_ON_START` | `true` (default) — the disk is wiped on deploy, so the sheet is read at boot |
+
+Railway sets `PORT` itself; the server honours it.
+
+On the **frontend** (Netlify → Site settings → Environment variables), set
+`VITE_API_URL` to the Railway URL, e.g. `https://foodfair-backend.up.railway.app`.
+It is baked in at build time, so change it → trigger a redeploy. `public/_redirects`
+is already there so deep links resolve to the app.
+
+### Changing the password on Railway
+
+```bash
+cd backend
+npm run hash-password        # prompts twice, hidden — prints ONLY the hash
+```
+
+Paste the hash into `DASHBOARD_PASSWORD_HASH` on Railway and save. Railway
+restarts the service; the new password is live and **every device is logged
+out** (sessions are bound to the hash). `set-password` is for a machine you
+run the server on directly — it writes `.env`, which Railway never sees.
+
 ## Configuration (`.env`)
 
 See `.env.example`. Everything has a default except the two secrets.

@@ -15,7 +15,7 @@ import path from 'node:path'
 import { config, assertConfig } from './src/config.js'
 import { securityHeaders, serveStatic, json, cors } from './src/http.js'
 import { router } from './src/routes.js'
-import { readPlan } from './src/plan.js'
+import { readPlan, refresh } from './src/plan.js'
 
 try {
   assertConfig()
@@ -65,6 +65,15 @@ server.listen(config.port, () => {
   }
   console.log('')
 })
+
+// Ephemeral hosts start with an empty data dir — fetch the sheet so the first
+// visitor is not met with "not synced yet". Failures are logged, not fatal.
+if (config.syncOnStart && !readPlan()) {
+  console.log('  No cached plan — reading the sheet now…')
+  refresh()
+    .then((o) => console.log(`  Synced: ${o.totals.deliveries} deliveries on ${o.totals.routes} routes${o.warnings.length ? ` (${o.warnings.length} check warnings)` : ''}`))
+    .catch((e) => console.error('  Startup sync failed: ' + e.message + ' — Refresh from the dashboard will retry.'))
+}
 
 const shutdown = () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref() }
 process.on('SIGINT', shutdown)
