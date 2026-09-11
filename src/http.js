@@ -58,6 +58,7 @@ export function securityHeaders(res) {
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
+    "frame-src https://www.google.com",   // the embedded route map (Maps Embed API)
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

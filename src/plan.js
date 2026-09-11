@@ -141,6 +141,8 @@ function hDotMm(v) {
 const UNASSIGNED = /^(driver\s+)?not\s+assigned|^tba$|^tbc$|^unassigned$/i;
 
 const toMin = (hhmm) => { const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+// people read "7:00 am", the data keeps "07:00" so it sorts
+const t12 = (v) => { const m = String(v || '').match(/^(\d{1,2}):(\d{2})$/); if (!m) return String(v || ''); const h = Number(m[1]); return (h % 12 || 12) + ':' + m[2] + (h >= 12 ? ' pm' : ' am'); };
 const fromMin = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 // "1:30 PM" / "13:30" -> minutes since midnight
 function deadlineMin(text) {
@@ -381,11 +383,11 @@ function extract(wb) {
   // ---- things a coordinator has to deal with before dispatch ----
   const attention = [];
   for (const r of routes) {
-    if (r.unassigned) attention.push({ kind: 'driver', route: r.id, text: `${r.id} ${r.area} (leave ${r.leaveBy}) has no driver assigned.` });
+    if (r.unassigned) attention.push({ kind: 'driver', route: r.id, text: `${r.id} ${r.area} (starts ${t12(r.startTime)}) has no driver assigned.` });
     else if (!r.driverPhone) attention.push({ kind: 'phone', route: r.id, text: `${r.id} ${r.driver} has no phone number.` });
   }
   for (const r of routes.filter((x) => x.lateMin > 0).sort((a, b) => b.lateMin - a.lateMin)) {
-    attention.push({ kind: 'late', route: r.id, text: r.id + ' ' + r.area + ' starts ' + r.startTime + ' and needs ' + r.durationMin + ' min — est. finish ' + r.estFinish + ', ' + r.lateMin + ' min after the ' + (plan.facts['Delivery deadline'] || 'deadline') + '.' });
+    attention.push({ kind: 'late', route: r.id, text: r.id + ' ' + r.area + ' starts ' + t12(r.startTime) + ' and needs ' + r.durationMin + ' min — est. finish ' + t12(r.estFinish) + ', ' + r.lateMin + ' min after the ' + (plan.facts['Delivery deadline'] || 'deadline').toLowerCase() + '.' });
   }
   for (const c of staffing.checks) {
     if (c.action && !/^none$/i.test(c.action) && !/duplicate-address|hibiscus/i.test(c.action) && !/exception/i.test(c.check)) {
