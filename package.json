@@ -12,7 +12,8 @@
     "dev": "node --watch server.js",
     "set-password": "node tools/set-password.js",
     "sync": "node tools/sync.js",
-    "hash-password": "node tools/hash-password.js"
+    "hash-password": "node tools/hash-password.js",
+    "drivers:export": "node tools/drivers-export.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0"

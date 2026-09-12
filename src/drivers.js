@@ -42,9 +42,29 @@ async function findLocalDriversFile() {
   return ''
 }
 
+const JSON_FILE = path.join(DATA_DIR, '..', 'drivers.json')
+
+/** Committed drivers.json, or the DRIVERS_JSON variable (base64 or plain JSON) — for hosts with no persistent disk. */
+function loadDriversJson() {
+  let raw = process.env.DRIVERS_JSON || ''
+  let source = 'DRIVERS_JSON variable'
+  if (!raw && fs.existsSync(JSON_FILE)) { raw = fs.readFileSync(JSON_FILE, 'utf8'); source = JSON_FILE }
+  if (!raw) return null
+  const text = raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')
+  const parsed = JSON.parse(text)
+  const drivers = Array.isArray(parsed) ? parsed : parsed.drivers || []
+  const noCreds = drivers.filter((d) => !d.email || !d.password).length
+  const warnings = noCreds ? [`${noCreds} of ${drivers.length} drivers have no email/password (from ${path.basename(source)}).`] : []
+  return { drivers, source, warnings }
+}
+
 export async function loadDrivers({ file, signal } = {}) {
   if (!file && !config.driversSheetId) file = await findLocalDriversFile()
-  if (!file && !config.driversSheetId) return { drivers: [], source: null, warnings: [] }
+  if (!file && !config.driversSheetId) {
+    // nothing live to read: fall back to the exported JSON so Railway still has the table
+    try { const j = loadDriversJson(); if (j) return j } catch (e) { return { drivers: [], source: null, warnings: ['drivers.json could not be read: ' + e.message] } }
+    return { drivers: [], source: null, warnings: [] }
+  }
   const wb = new ExcelJS.Workbook()
   if (file) await wb.xlsx.readFile(file)
   else {

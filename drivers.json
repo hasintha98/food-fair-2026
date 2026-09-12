@@ -1,0 +1,386 @@
+{
+  "source": "Delivery_Route_Plan_Latest_10_Sep_2026 - Master.xlsx",
+  "exportedAt": "2026-09-12T00:54:01.067Z",
+  "drivers": [
+    {
+      "driver": "Ajeth",
+      "route": "R24",
+      "area": "East Auckland",
+      "phone": "0224881940",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Ajith D1",
+      "route": "R21",
+      "area": "Hobsonville / Northwest",
+      "phone": "0212641189",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Ajith D2",
+      "route": "R22",
+      "area": "Hobsonville / Northwest",
+      "phone": "0212641189",
+      "status": "Sent",
+      "email": "kalana",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Asanka D1",
+      "route": "R05",
+      "area": "Central Core",
+      "phone": "0225241713",
+      "status": "Sent",
+      "email": "asankad1@flow.org",
+      "password": "AsankaR05",
+      "note": ""
+    },
+    {
+      "driver": "Asanka D2",
+      "route": "R06",
+      "area": "Central Core",
+      "phone": "0225241713",
+      "status": "Sent",
+      "email": "asankad2@flow.org",
+      "password": "AsankaR06",
+      "note": ""
+    },
+    {
+      "driver": "Asanka D3",
+      "route": "R15",
+      "area": "Central Core",
+      "phone": "0225241713",
+      "status": "Sent",
+      "email": "asankad3@flow.org",
+      "password": "AsankaR15",
+      "note": ""
+    },
+    {
+      "driver": "Asanka D4",
+      "route": "R23",
+      "area": "Central Core",
+      "phone": "0225241713",
+      "status": "Sent",
+      "email": "asankad4@flow.org",
+      "password": "AsankaR23",
+      "note": ""
+    },
+    {
+      "driver": "Bandara",
+      "route": "R36",
+      "area": "Central South",
+      "phone": "0277060606",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Charith",
+      "route": "R37",
+      "area": "Central South",
+      "phone": "0226474444",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Chiran",
+      "route": "R16",
+      "area": "East Auckland",
+      "phone": "0220755800",
+      "status": "Sent",
+      "email": "chiran@flow.org",
+      "password": "ChiranR16",
+      "note": ""
+    },
+    {
+      "driver": "Danushka",
+      "route": "R19",
+      "area": "East Auckland",
+      "phone": "02108833804",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Dhanushka",
+      "route": "R01",
+      "area": "Hibiscus Coast",
+      "phone": "0211851457",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Dilu",
+      "route": "R33",
+      "area": "Manukau / Manurewa",
+      "phone": "0224058162",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Dinesh",
+      "route": "R29",
+      "area": "South Auckland",
+      "phone": "0221971473",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Gayan",
+      "route": "R35",
+      "area": "Manukau / Manurewa",
+      "phone": "02108452459",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Ishan",
+      "route": "R28",
+      "area": "South Auckland",
+      "phone": "0224290842",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Kosala, Nadika",
+      "route": "R18",
+      "area": "East Auckland",
+      "phone": "0223856549",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Mahesh D1",
+      "route": "R11",
+      "area": "West Auckland",
+      "phone": "021339929",
+      "status": "yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Mahesh D2",
+      "route": "R12",
+      "area": "West Auckland",
+      "phone": "021339929",
+      "status": "Sent",
+      "email": "maheshd2@flow.org",
+      "password": "MaheshR12",
+      "note": ""
+    },
+    {
+      "driver": "Manjula",
+      "route": "R17",
+      "area": "East Auckland",
+      "phone": "0223158056",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Nethya",
+      "route": "R08",
+      "area": "Central West",
+      "phone": "TBA",
+      "status": "",
+      "email": "nethya@flow.org",
+      "password": "NethyaR08",
+      "note": ""
+    },
+    {
+      "driver": "Nipun",
+      "route": "R04",
+      "area": "Central Core",
+      "phone": "0211382751",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Nishantha D1",
+      "route": "R20",
+      "area": "Central East",
+      "phone": "021786290",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Nishantha D2",
+      "route": "R25",
+      "area": "Central East",
+      "phone": "021786290",
+      "status": "",
+      "email": "nishanthad2@flow.org",
+      "password": "NishanthaR25",
+      "note": "Prince"
+    },
+    {
+      "driver": "Pasindu D1",
+      "route": "R02",
+      "area": "North Shore East",
+      "phone": "0224210988",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Pasindu D2",
+      "route": "R03",
+      "area": "North Shore East",
+      "phone": "0224210988",
+      "status": "Sent",
+      "email": "pasindud2@flow.org",
+      "password": "PasinduR03",
+      "note": ""
+    },
+    {
+      "driver": "Pasindu D3",
+      "route": "R07",
+      "area": "North Shore South",
+      "phone": "0224210988",
+      "status": "Sent",
+      "email": "pasindud3@flow.org",
+      "password": "PasinduR07",
+      "note": ""
+    },
+    {
+      "driver": "Pasindu D4",
+      "route": "R10",
+      "area": "North Shore East",
+      "phone": "0224210988",
+      "status": "Sent",
+      "email": "pasindud4@flow.org",
+      "password": "PasinduR10",
+      "note": ""
+    },
+    {
+      "driver": "Pasindu D5",
+      "route": "R32",
+      "area": "North Shore Central",
+      "phone": "0224210988",
+      "status": "Sent",
+      "email": "pasindud5@flow.org",
+      "password": "PasinduR32",
+      "note": ""
+    },
+    {
+      "driver": "Prasad D1",
+      "route": "R30",
+      "area": "Central West Inner",
+      "phone": "0210752182",
+      "status": "Sent",
+      "email": "prasadd1@flow.org",
+      "password": "PrasadR30",
+      "note": ""
+    },
+    {
+      "driver": "Prasad D2",
+      "route": "R31",
+      "area": "Central West Inner",
+      "phone": "0210752182",
+      "status": "Sent",
+      "email": "prasadd2@flow.org",
+      "password": "PrasadR31",
+      "note": ""
+    },
+    {
+      "driver": "Prasanna",
+      "route": "R34",
+      "area": "Central South",
+      "phone": "0223058742",
+      "status": "Sent",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Ruvindra D1",
+      "route": "R26",
+      "area": "Central East",
+      "phone": "021364076",
+      "status": "Sent",
+      "email": "ruvindrad1@flow.org",
+      "password": "RuvindraR26",
+      "note": ""
+    },
+    {
+      "driver": "Ruvindra D2",
+      "route": "R27",
+      "area": "Central East",
+      "phone": "021364076",
+      "status": "Sent",
+      "email": "ruvindrad2@flow.org",
+      "password": "RuvindraR27",
+      "note": ""
+    },
+    {
+      "driver": "Ruwan",
+      "route": "R13",
+      "area": "Flat Bush",
+      "phone": "0274239514",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Sakuna",
+      "route": "R39",
+      "area": "Ōtāhuhu / Māngere",
+      "phone": "02902082680",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Sudarshana",
+      "route": "R38",
+      "area": "Ōtāhuhu / Māngere",
+      "phone": "0273524955",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    },
+    {
+      "driver": "Sanjaya",
+      "route": "R14",
+      "area": "Flat Bush",
+      "phone": "0211107749",
+      "status": "Yes",
+      "email": "",
+      "password": "",
+      "note": ""
+    }
+  ]
+}
