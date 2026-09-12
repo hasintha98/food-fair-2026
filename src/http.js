@@ -86,7 +86,7 @@ export function cors(req, res, allowed) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Accept',
+      'Access-Control-Allow-Headers': 'Content-Type, Accept, Authorization',
       'Access-Control-Max-Age': '600',
     })
     res.end()

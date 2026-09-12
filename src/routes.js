@@ -10,19 +10,28 @@
  */
 import { config } from './config.js'
 import { verifyPassword, issueSession, verifySession, parseCookies, sessionCookie, clearCookie, COOKIE } from './auth.js'
-import { LoginLimiter, clientKey } from './ratelimit.js'
+import { LoginLimiter, clientKey, deviceKey } from './ratelimit.js'
 import { json, readJson, isHttps, Router } from './http.js'
 import { refresh as refreshPlan, readPlan, SHEET_EDIT_URL } from './plan.js'
 
+// Two guards: a soft one per device, and a hard ceiling per address so a
+// script cannot dodge the first by changing its browser string.
 const limiter = new LoginLimiter({ maxAttempts: config.loginMaxAttempts, lockMinutes: config.loginLockMinutes })
+const addrLimiter = new LoginLimiter({ maxAttempts: Math.max(60, config.loginMaxAttempts * 10), lockMinutes: 15 })
 
 const cookieSecure = (req) =>
   config.cookieSecure === 'true' ? true : config.cookieSecure === 'false' ? false : isHttps(req)
 const crossSite = config.corsOrigins.length > 0
 
-/** Reads and verifies the session cookie; null when absent, forged, expired or from an old password. */
+/**
+ * Reads and verifies the session; null when absent, forged, expired or from an
+ * old password. The token travels as an HttpOnly cookie and, for browsers that
+ * refuse cross-site cookies (Safari on a phone), as an Authorization header.
+ */
 function sessionOf(req) {
-  const token = parseCookies(req.headers.cookie)[COOKIE]
+  const auth = String(req.headers.authorization || '')
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
+  const token = bearer || parseCookies(req.headers.cookie)[COOKIE]
   return token ? verifySession(token, { secret: config.sessionSecret, passwordHash: config.passwordHash }) : null
 }
 
@@ -44,8 +53,9 @@ router.get('/api/health', (req, res) => {
 })
 
 router.post('/api/login', async (req, res) => {
-  const key = clientKey(req)
-  const locked = limiter.lockedFor(key)
+  const key = deviceKey(req, config.trustProxy)
+  const addr = clientKey(req, config.trustProxy)
+  const locked = limiter.lockedFor(key) || addrLimiter.lockedFor(addr)
   if (locked) {
     return json(res, 429, {
       ok: false, code: 'LOCKED',
@@ -61,7 +71,9 @@ router.post('/api/login', async (req, res) => {
   if (!ok) {
     // Slow the loop a little even before the lock engages.
     await new Promise((r) => setTimeout(r, 350))
-    const { locked: nowLocked, remaining } = limiter.fail(key)
+    const { locked: devLocked, remaining } = limiter.fail(key)
+    const { locked: addrLocked } = addrLimiter.fail(addr)
+    const nowLocked = addrLocked || devLocked
     if (nowLocked) {
       return json(res, 429, {
         ok: false, code: 'LOCKED',
@@ -73,10 +85,12 @@ router.post('/api/login', async (req, res) => {
   }
 
   limiter.succeed(key)
+  addrLimiter.succeed(addr)
   const { token, expiresAt } = issueSession({
     secret: config.sessionSecret, passwordHash: config.passwordHash, hours: config.sessionHours,
   })
-  json(res, 200, { ok: true, expiresAt }, {
+  // the token goes back in the body too: the dashboard keeps it for browsers that drop the cookie
+  json(res, 200, { ok: true, expiresAt, token }, {
     'Set-Cookie': sessionCookie(token, { maxAgeSec: config.sessionHours * 3600, secure: cookieSecure(req), crossSite }),
   })
 })

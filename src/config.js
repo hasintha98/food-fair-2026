@@ -64,8 +64,17 @@ export const config = {
   syncOnStart: String(env('SYNC_ON_START', 'true')).toLowerCase() !== 'false',
   // Origins allowed to call the API from another site (comma-separated). Empty = same-origin only.
   corsOrigins: String(env('CORS_ORIGIN', '')).split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
-  loginMaxAttempts: int(env('LOGIN_MAX_ATTEMPTS'), 5),
-  loginLockMinutes: int(env('LOGIN_LOCK_MINUTES'), 15),
+  // Wrong-password lock, per device (address + browser): a few typos lock that phone, not the whole depot.
+  loginMaxAttempts: int(env('LOGIN_MAX_ATTEMPTS'), 8),
+  loginLockMinutes: int(env('LOGIN_LOCK_MINUTES'), 5),
+  // Behind a reverse proxy (Railway, Render, nginx) the real client address is in X-Forwarded-For.
+  // 'auto' = on when a hosting platform's variables are present.
+  trustProxy: (() => {
+    const v = String(env('TRUST_PROXY', 'auto')).toLowerCase()
+    if (v === 'true' || v === '1') return true
+    if (v === 'false' || v === '0') return false
+    return Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RENDER || process.env.FLY_APP_NAME)
+  })(),
 }
 
 /** Throws a readable error listing everything that is missing or malformed. */

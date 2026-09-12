@@ -3,6 +3,8 @@
  * after `maxAttempts` failures the address is locked for `lockMinutes`.
  * A successful login clears the counter. Old entries are swept periodically.
  */
+import { createHash } from 'node:crypto'
+
 export class LoginLimiter {
   constructor({ maxAttempts = 5, lockMinutes = 15 } = {}) {
     this.max = maxAttempts
@@ -46,4 +48,14 @@ export function clientKey(req, trustProxy = false) {
     if (xf) return String(xf).split(',')[0].trim()
   }
   return req.socket.remoteAddress || 'unknown'
+}
+
+/**
+ * Address + browser. Many phones share one public address (a mobile carrier,
+ * the depot wifi, a hosting proxy), so the per-device lock keys on this and
+ * the address-only limiter above it just caps the total.
+ */
+export function deviceKey(req, trustProxy = false) {
+  const ua = String(req.headers['user-agent'] || '').slice(0, 200)
+  return clientKey(req, trustProxy) + '|' + createHash('sha256').update(ua).digest('base64url').slice(0, 16)
 }
