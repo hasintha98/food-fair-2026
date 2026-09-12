@@ -8,11 +8,12 @@ import { refresh, SHEET_EDIT_URL } from '../src/plan.js'
 
 ;(async () => {
   const file = process.argv[2]
+  const driversFile = process.argv[3]
   console.log(file ? `Reading ${file}` : 'Downloading the shared sheet…')
 
   let out
   try {
-    out = await refresh({ file })
+    out = await refresh({ file, driversFile })
   } catch (err) {
     console.error('\nRefresh failed: ' + err.message)
     console.error('Sheet: ' + SHEET_EDIT_URL)
@@ -25,6 +26,7 @@ import { refresh, SHEET_EDIT_URL } from '../src/plan.js'
   console.log('\n=== ' + (payload.plan.title || 'Delivery plan') + ' ===')
   console.log(`routes ${totals.routes} | areas ${totals.areas} | drivers ${totals.drivers}${totals.unassigned ? ` | UNASSIGNED ${totals.unassigned}` : ''}`)
   console.log(`deliveries ${totals.deliveries} | unique doors ${totals.doors} | packs ${totals.packs} | packing notes ${totals.packingNotes}${totals.lateRoutes ? ` | LATE ROUTES ${totals.lateRoutes}` : ''}`)
+  console.log(`drivers table: ${(payload.drivers || []).length} rows${payload.plan.driversSource ? '' : ' (DRIVERS_SHEET_ID not set)'}`)
   if (movedNotes.length) {
     console.log(`
 --- ${movedNotes.length} instruction(s) moved from delivery to packing ---`)

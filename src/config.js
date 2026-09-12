@@ -52,6 +52,11 @@ export const config = {
   sessionSecret: env('SESSION_SECRET', ''),
   sessionHours: int(env('SESSION_HOURS'), 24),
   sheetId: env('SHEET_ID', '1Bb7PPyYHRwWUCdPSTDCTV-KPqLxOC5x2rJnfET4w7QQ'),
+  // The workbook holding the "Drivers" tab (driver, route, phone, email, password). Optional.
+  driversSheetId: env('DRIVERS_SHEET_ID', ''),
+  // …or a local workbook. If neither is set, any .xlsx in data/ with a Drivers tab is used.
+  driversFile: env('DRIVERS_FILE', ''),
+  driversTab: env('DRIVERS_TAB', 'Drivers'),
   staticDir: path.resolve(BACKEND_DIR, env('STATIC_DIR', '../dashboard/dist')),
   exportDir: env('EXPORT_DIR', '..') ? path.resolve(BACKEND_DIR, env('EXPORT_DIR', '..')) : null,
   cookieSecure: env('COOKIE_SECURE', 'auto'),

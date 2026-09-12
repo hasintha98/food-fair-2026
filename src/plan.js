@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import ExcelJS from 'exceljs'
 import { config, DATA_DIR, PLAN_FILE } from './config.js'
+import { loadDrivers } from './drivers.js'
 
 export const SHEET_ID = config.sheetId
 export const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=xlsx`
@@ -573,9 +574,26 @@ async function writeXlsx(payload) {
   return p;
 }
 
-async function refresh({ file, signal, writeFiles = true } = {}) {
+async function refresh({ file, driversFile, signal, writeFiles = true } = {}) {
   const { wb, from, bytes } = await loadWorkbook({ file, signal });
   const { payload, warnings, totals, movedNotes } = extract(wb);
+
+  // driver credentials live in a second workbook; a failure there must not block the plan
+  try {
+    const d = await loadDrivers({ file: driversFile, signal });
+    payload.drivers = d.drivers;
+    payload.plan.driversSource = d.source;
+    warnings.push(...d.warnings);
+    // route rows learn their email/password so the dashboard can show them too
+    const byRoute = new Map(d.drivers.map((x) => [x.route, x]));
+    for (const r of payload.routes) { const x = byRoute.get(r.id); if (x) { r.email = x.email; r.password = x.password; r.credStatus = x.status; if (!r.driverPhone && x.phone) r.driverPhone = x.phone; } }
+    for (const o of payload.orders) { const x = byRoute.get(o.route); if (x && !o.driverPhone && x.phone) o.driverPhone = x.phone; }
+    writePlanJson(payload);
+  } catch (e) {
+    payload.drivers = [];
+    warnings.push('Drivers table not loaded: ' + e.message);
+    writePlanJson(payload);
+  }
   const written = [];
   const softErrors = [];
 
